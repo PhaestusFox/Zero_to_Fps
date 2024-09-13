@@ -18,6 +18,7 @@ pub fn plugin(app: &mut App) {
                 player_move,
                 player_look,
                 toggle_mouse.run_if(input_just_pressed(KeyCode::Escape)),
+                noclip.run_if(input_just_pressed(KeyCode::F11)),
             ),
         );
 }
@@ -96,7 +97,7 @@ fn spawn_player(
             mesh_assets.add(Capsule3d::new(1., 2.)),
             material_assets.add(StandardMaterial::default()),
             KinematicCharacterController::default(),
-            RigidBody::KinematicPositionBased,
+            RigidBody::Fixed,
             InputManagerBundle {
                 input_map: player_bindings(),
                 action_state: ActionState::default(),
@@ -183,5 +184,15 @@ fn player_look(
                 (pitch - (look.y).to_radians())
                     .clamp(-f32::consts::FRAC_PI_2, f32::consts::FRAC_PI_2),
             );
+    }
+}
+
+fn noclip(mut player: Query<&mut RigidBody, With<Player>>) {
+    for mut player in &mut player {
+        match *player {
+            RigidBody::Dynamic => *player = RigidBody::Fixed,
+            RigidBody::Fixed => *player = RigidBody::Dynamic,
+            _ => {}
+        }
     }
 }
