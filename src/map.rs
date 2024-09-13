@@ -1,92 +1,53 @@
+use core::f32;
+
 use bevy::{
     asset::{AssetLoader, AsyncReadExt},
     prelude::*,
+    render::render_asset::RenderAssetUsages,
 };
 use bevy_rapier3d::prelude::*;
 
+mod asset_loading;
+mod map_editor;
+
+#[derive(Component)]
+struct MapRoot;
+
 pub fn plugin(app: &mut App) {
-    app.init_asset_loader::<CellAssetLoader>()
+    app.init_asset_loader::<asset_loading::CellAssetLoader>()
         .init_asset::<Cell>()
         .add_systems(Startup, spawn_test_asset)
-        .add_systems(Update, (onchange_cell, onload_cell));
+        .add_systems(Update, (onchange_cell, onload_cell))
+        .add_systems(PostUpdate, update_scale)
+        .add_plugins(map_editor::plugin);
 }
 
 #[derive(Asset, Reflect)]
-struct Cell {
+pub struct Cell {
     scene: Handle<Scene>,
     #[reflect(ignore)]
     collider: Collider,
     collider_offset: Option<Vec3>,
     body: RigidBody,
+    scale: f32,
+    #[reflect(ignore)]
+    can_tile: TileDirection,
 }
 
-// #[test]
-// fn print_cell() {
-//     println!(
-//         "{:#?}",
-//         ron::to_string(&CellAsset {
-//             scene: "Conveyor/box-small.glb".to_string(),
-//             collider: Collider::cuboid(0.5, 0.5, 0.5),
-//         })
-//     );
-// }
+use bitflags::bitflags;
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct CellAsset {
-    scene: String,
-    collider: Collider,
-    #[serde(default)]
-    collider_offset: Option<Vec3>,
-    #[serde(default = "fixed")]
-    body: RigidBody,
-}
-
-fn fixed() -> RigidBody {
-    RigidBody::Fixed
-}
-
-#[derive(Default)]
-struct CellAssetLoader;
-
-impl AssetLoader for CellAssetLoader {
-    type Asset = Cell;
-    type Settings = ();
-    type Error = &'static str;
-    fn extensions(&self) -> &[&str] {
-        &["cell"]
+// The `bitflags!` macro generates `struct`s that manage a set of flags.
+bitflags! {
+    #[derive(Default, serde::Serialize, serde::Deserialize)]
+    /// Represents a set of flags.
+    struct TileDirection: u8 {
+        /// The value `A`, at bit position `0`.
+        const X = 0b00000001;
+        /// The value `B`, at bit position `1`.
+        const Y = 0b00000010;
+        /// The value `C`, at bit position `2`.
+        const Z = 0b00000100;
     }
-    fn load<'a>(
-        &'a self,
-        reader: &'a mut bevy::asset::io::Reader,
-        _settings: &'a Self::Settings,
-        load_context: &'a mut bevy::asset::LoadContext,
-    ) -> impl bevy::utils::ConditionalSendFuture<Output = Result<Self::Asset, Self::Error>> {
-        load_cell_asset(reader, load_context)
-    }
-}
-
-async fn load_cell_asset<'a>(
-    reader: &'a mut bevy::asset::io::Reader<'_>,
-    load_context: &'a mut bevy::asset::LoadContext<'_>,
-) -> Result<Cell, &'static str> {
-    let mut data = String::new();
-    if reader.read_to_string(&mut data).await.is_err() {
-        return Err("Failed to read string");
-    };
-    let cell: CellAsset = match ron::from_str(&data) {
-        Ok(cell) => cell,
-        Err(e) => {
-            error!("{}", e);
-            return Err("Ron Failed");
-        }
-    };
-    let cell = Cell {
-        scene: load_context.load(cell.scene),
-        collider: cell.collider,
-        collider_offset: cell.collider_offset,
-        body: cell.body,
-    };
-    Ok(cell)
 }
 
 #[derive(Bundle, Default)]
@@ -137,6 +98,22 @@ fn spawn_test_asset(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..Default::default()
         },
     ));
+    commands.spawn((
+        Name::new("Floor"),
+        MapCellBundle {
+            cell: asset_server.load("Cells/floor.cell"),
+            transform: Transform::from_translation(Vec3::Y * -4.),
+            ..Default::default()
+        },
+    ));
+    commands.spawn((
+        Name::new("Wall"),
+        MapCellBundle {
+            cell: asset_server.load("Cells/wall.cell"),
+            transform: Transform::from_translation(Vec3::new(0., -4., 5.5)),
+            ..Default::default()
+        },
+    ));
 }
 
 fn onload_cell(
@@ -165,6 +142,9 @@ fn onload_cell(
     }
 }
 
+#[derive(Component)]
+struct SetScale(f32);
+
 fn onchange_cell(
     mut commands: Commands,
     cells: Query<(Entity, &Handle<Cell>), Changed<Handle<Cell>>>,
@@ -179,11 +159,19 @@ fn onchange_cell(
     }
 }
 
+fn update_scale(mut commands: Commands, mut objects: Query<(Entity, &mut Transform, &SetScale)>) {
+    return;
+    for (entity, mut transform, scale) in &mut objects {
+        transform.scale = Vec3::splat(scale.0);
+        commands.entity(entity).remove::<SetScale>();
+    }
+}
+
 fn update_cell(commands: &mut Commands, target: Entity, asset: &Cell) {
     let mut cell = commands.entity(target);
     cell.despawn_descendants();
     cell.remove::<Collider>();
-    cell.insert((asset.scene.clone(), asset.body));
+    cell.insert((asset.scene.clone(), asset.body, SetScale(asset.scale)));
     if let Some(offset) = asset.collider_offset {
         cell.with_children(|p| {
             p.spawn((

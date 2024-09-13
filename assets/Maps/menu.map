@@ -1,0 +1,49 @@
+(
+    spawn: (
+        translation: (0.0, 2.0, 0.0),
+        rotation: (0.0, 0.0, 0.0, 1.0),
+        scale: (1.0, 1.0, 1.0),
+    ),
+    tiles: [
+        (
+            cell: "floor.cell",
+            transform: (
+                translation: (0.0, 0.0, 0.0),
+                rotation: (0.0, 0.0, 0.0, 1.0),
+                scale: (20.0, 1.0, 20.0),
+            ),
+        ),
+        (
+            cell: "wall.cell",
+            transform: (
+                translation: (0.0, 0.0, 10.0),
+                rotation: (0.0, 0.0, 0.0, 1.0),
+                scale: (20.0, 1.0, 1.0),
+            ),
+        ),
+        (
+            cell: "wall.cell",
+            transform: (
+                translation: (0.0, 0.0, -10.0),
+                rotation: (0.0, 1.0, 0.0, -0.00000004371139),
+                scale: (20.0, 1.0, 1.0),
+            ),
+        ),
+        (
+            cell: "wall.cell",
+            transform: (
+                translation: (10.0, 0.0, 0.0),
+                rotation: (0.0, 0.70710677, 0.0, 0.70710677),
+                scale: (20.0, 1.0, 1.0),
+            ),
+        ),
+        (
+            cell: "wall.cell",
+            transform: (
+                translation: (-10.0, 0.0, 0.0),
+                rotation: (0.0, -0.70710677, 0.0, 0.70710677),
+                scale: (20.0, 1.0, 1.0),
+            ),
+        ),
+    ],
+)

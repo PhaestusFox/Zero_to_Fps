@@ -1,6 +1,7 @@
 (
     scene: "Conveyor/box-wide.glb#Scene0",
-    collider: (raw:Cuboid((half_extents:(0.25,0.25,0.50))),unscaled:Cuboid((half_extents:(0.25,0.25,0.50))),scale:(1.0,1.0,1.0)),
+    collider: Cuboid((0.5,0.5,1.)),
     collider_offset: Some((0.,0.25,0.)),
-    body: Dynamic
+    body: Dynamic,
+    can_tile: (bits:0),
 )

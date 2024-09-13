@@ -49,7 +49,7 @@ fn toggle_mouse(mut window: Query<&mut Window, With<PrimaryWindow>>) {
 struct PlayerCam;
 
 #[derive(Component)]
-struct Player;
+pub struct Player;
 
 #[derive(Reflect, Clone, Copy, Hash, PartialEq, Eq, Debug)]
 enum PlayerAction {
@@ -94,10 +94,10 @@ fn spawn_player(
             Player,
             SpatialBundle::default(),
             Collider::capsule(Vec3::Y, Vec3::NEG_Y, 1.),
-            mesh_assets.add(Capsule3d::new(1., 2.)),
+            mesh_assets.add(Capsule3d::new(0.5, 1.)),
             material_assets.add(StandardMaterial::default()),
             KinematicCharacterController::default(),
-            RigidBody::Fixed,
+            RigidBody::Dynamic,
             InputManagerBundle {
                 input_map: player_bindings(),
                 action_state: ActionState::default(),
@@ -105,7 +105,13 @@ fn spawn_player(
             LockedAxes::ROTATION_LOCKED,
         ))
         .with_children(|p| {
-            p.spawn((Camera3dBundle::default(), PlayerCam));
+            p.spawn((
+                Camera3dBundle {
+                    transform: Transform::from_translation(Vec3::Y * 0.5),
+                    ..Default::default()
+                },
+                PlayerCam,
+            ));
         });
 }
 
