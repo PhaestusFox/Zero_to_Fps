@@ -1,5 +1,5 @@
 (
-    scene: "Blasters/blasterA.glb#Scene0",
+    scene: "Blasters/blasterF.glb#Scene0",
     collider: Cuboid((0.2,0.5,1.)),
     collider_offset: Some((0.,0.,0.)),
     body: Dynamic,

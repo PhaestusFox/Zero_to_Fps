@@ -68,15 +68,25 @@ fn equip_gun(
 struct Recoil(f32);
 
 #[derive(Resource)]
-struct ShootSound(Handle<AudioSource>);
+struct ShootSound(Vec<Handle<AudioSource>>);
+
+impl ShootSound {
+    fn get(&self) -> Handle<AudioSource> {
+        use rand::seq::*;
+        self.0.choose(&mut rand::thread_rng()).cloned().unwrap()
+    }
+}
 
 impl FromWorld for ShootSound {
     fn from_world(world: &mut World) -> Self {
-        ShootSound(
-            world
-                .resource::<AssetServer>()
-                .load("Sci-Fi-Sound/laserRetro_000.ogg"),
-        )
+        let mut sounds = Vec::new();
+        let server = world.resource::<AssetServer>();
+        for i in 0..5 {
+            sounds.push(server.load(format!("Sci-Fi-Sound/laserLarge_00{}.ogg", i)));
+            sounds.push(server.load(format!("Sci-Fi-Sound/laserRetro_00{}.ogg", i)));
+            sounds.push(server.load(format!("Sci-Fi-Sound/laserSmall_00{}.ogg", i)));
+        }
+        ShootSound(sounds)
     }
 }
 
@@ -100,7 +110,7 @@ fn fire(
     }
     recoil.0 += 1.;
     commands.entity(blaster).insert(AudioSourceBundle {
-        source: sound.0.clone_weak(),
+        source: sound.get(),
         settings: PlaybackSettings {
             mode: bevy::audio::PlaybackMode::Remove,
             ..Default::default()
@@ -113,9 +123,8 @@ fn recoil(mut blasters: Query<(&mut Transform, &mut Recoil)>, time: Res<Time>) {
         if recoil.0 <= 0. {
             continue;
         }
-        let (mut pitch, yaw, roll) = pos.rotation.to_euler(EulerRot::XYZ);
-        recoil.0 -= time.delta_seconds();
-        pitch = recoil.0 + f32::consts::PI;
-        pos.rotation = Quat::from_euler(EulerRot::XYZ, pitch, yaw, roll);
+        let (_, yaw, roll) = pos.rotation.to_euler(EulerRot::XYZ);
+        recoil.0 -= time.delta_seconds() * 3.;
+        pos.rotation = Quat::from_euler(EulerRot::XYZ, recoil.0 + f32::consts::PI, yaw, roll);
     }
 }
