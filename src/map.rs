@@ -17,6 +17,7 @@ struct Cell {
     #[reflect(ignore)]
     collider: Collider,
     collider_offset: Option<Vec3>,
+    body: RigidBody,
 }
 
 // #[test]
@@ -36,6 +37,12 @@ struct CellAsset {
     collider: Collider,
     #[serde(default)]
     collider_offset: Option<Vec3>,
+    #[serde(default = "fixed")]
+    body: RigidBody,
+}
+
+fn fixed() -> RigidBody {
+    RigidBody::Fixed
 }
 
 #[derive(Default)]
@@ -77,6 +84,7 @@ async fn load_cell_asset<'a>(
         scene: load_context.load(cell.scene),
         collider: cell.collider,
         collider_offset: cell.collider_offset,
+        body: cell.body,
     };
     Ok(cell)
 }
@@ -98,9 +106,34 @@ struct MapCellBundle {
 
 fn spawn_test_asset(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((
-        Name::new("test box"),
+        Name::new("small box"),
         MapCellBundle {
-            cell: asset_server.load("Cells/test.cell"),
+            cell: asset_server.load("Cells/box-small.cell"),
+            transform: Transform::from_translation(Vec3::X * 2.),
+            ..Default::default()
+        },
+    ));
+    commands.spawn((
+        Name::new("wide box"),
+        MapCellBundle {
+            cell: asset_server.load("Cells/box-wide.cell"),
+            transform: Transform::from_translation(Vec3::X * 4.),
+            ..Default::default()
+        },
+    ));
+    commands.spawn((
+        Name::new("long box"),
+        MapCellBundle {
+            cell: asset_server.load("Cells/box-long.cell"),
+            transform: Transform::from_translation(Vec3::X * -2.),
+            ..Default::default()
+        },
+    ));
+    commands.spawn((
+        Name::new("large box"),
+        MapCellBundle {
+            cell: asset_server.load("Cells/box-large.cell"),
+            transform: Transform::from_translation(Vec3::X * -4.),
             ..Default::default()
         },
     ));
@@ -123,22 +156,7 @@ fn onload_cell(
                             error!("Cell not in Assets<Cell> when loaded");
                             continue;
                         };
-                        let mut cell = commands.entity(cell);
-                        cell.despawn_descendants();
-                        cell.remove::<Collider>();
-                        if let Some(offset) = asset.collider_offset {
-                            cell.insert(asset.scene.clone()).with_children(|p| {
-                                p.spawn((
-                                    SpatialBundle {
-                                        transform: Transform::from_translation(offset),
-                                        ..Default::default()
-                                    },
-                                    asset.collider.clone(),
-                                ));
-                            });
-                        } else {
-                            cell.insert((asset.scene.clone(), asset.collider.clone()));
-                        }
+                        update_cell(&mut commands, cell, asset);
                     }
                 }
             }
@@ -157,8 +175,26 @@ fn onchange_cell(
             warn!("Cell not in Assets<Cell> when Changed");
             continue;
         };
-        commands
-            .entity(cell)
-            .insert((asset.scene.clone(), asset.collider.clone()));
+        update_cell(&mut commands, cell, asset);
+    }
+}
+
+fn update_cell(commands: &mut Commands, target: Entity, asset: &Cell) {
+    let mut cell = commands.entity(target);
+    cell.despawn_descendants();
+    cell.remove::<Collider>();
+    cell.insert((asset.scene.clone(), asset.body));
+    if let Some(offset) = asset.collider_offset {
+        cell.with_children(|p| {
+            p.spawn((
+                SpatialBundle {
+                    transform: Transform::from_translation(offset),
+                    ..Default::default()
+                },
+                asset.collider.clone(),
+            ));
+        });
+    } else {
+        cell.insert(asset.collider.clone());
     }
 }
