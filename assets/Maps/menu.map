@@ -45,5 +45,13 @@
                 scale: (20.0, 1.0, 1.0),
             ),
         ),
+        (
+            cell: "blaster-a.cell",
+            transform: (
+                translation: (0.0, 10.0, 0.0),
+                rotation: (0.0, -0.70710677, 0.0, 0.70710677),
+                scale: (1., 1.0, 1.0),
+            ),
+        )
     ],
 )

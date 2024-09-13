@@ -10,15 +10,15 @@ use bevy_editor_pls::{egui::widgets, EditorPlugin};
 use bevy_rapier3d::prelude::*;
 use leafwing_input_manager::prelude::*;
 
-mod player;
-
+mod blaster;
 mod map;
+mod player;
 
 fn main() {
     let mut app = App::new();
     app.add_plugins((DefaultPlugins, RapierPhysicsPlugin::<()>::default()))
         .add_systems(Startup, (spawn_world, test_spawn))
-        .add_plugins((player::plugin, map::plugin));
+        .add_plugins((player::plugin, map::plugin, blaster::plugin));
     #[cfg(debug_assertions)]
     app.add_plugins((EditorPlugin::new(), RapierDebugRenderPlugin::default()));
     app.run();

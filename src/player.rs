@@ -52,7 +52,7 @@ struct PlayerCam;
 pub struct Player;
 
 #[derive(Reflect, Clone, Copy, Hash, PartialEq, Eq, Debug)]
-enum PlayerAction {
+pub enum PlayerAction {
     MoveUp,
     MoveDown,
     MoveLeft,
@@ -60,6 +60,7 @@ enum PlayerAction {
     Look,
     FlyUp,
     FlyDown,
+    Shoot,
 }
 
 impl Actionlike for PlayerAction {
@@ -80,7 +81,8 @@ fn player_bindings() -> InputMap<PlayerAction> {
     ])
     .with_dual_axis(PlayerAction::Look, MouseMove::default().sensitivity(0.1));
     map.insert(PlayerAction::FlyUp, KeyCode::Space)
-        .insert(PlayerAction::FlyDown, KeyCode::ShiftLeft);
+        .insert(PlayerAction::FlyDown, KeyCode::ShiftLeft)
+        .insert(PlayerAction::Shoot, MouseButton::Left);
     map
 }
 
@@ -93,7 +95,7 @@ fn spawn_player(
         .spawn((
             Player,
             SpatialBundle::default(),
-            Collider::capsule(Vec3::Y, Vec3::NEG_Y, 1.),
+            Collider::capsule(Vec3::Y * 0.5, Vec3::NEG_Y * 0.5, 0.5),
             mesh_assets.add(Capsule3d::new(0.5, 1.)),
             material_assets.add(StandardMaterial::default()),
             KinematicCharacterController::default(),
@@ -103,6 +105,8 @@ fn spawn_player(
                 action_state: ActionState::default(),
             },
             LockedAxes::ROTATION_LOCKED,
+            CollidingEntities::default(),
+            ActiveEvents::all(),
         ))
         .with_children(|p| {
             p.spawn((
@@ -124,7 +128,7 @@ fn player_move(
         ),
         With<Player>,
     >,
-    camera: Query<&Transform, With<PlayerCam>>,
+    camera: Query<&GlobalTransform, With<PlayerCam>>,
 ) {
     for (mut controller, children, actions) in &mut player {
         let mut delta = Vec3::default();
@@ -168,10 +172,16 @@ fn player_move(
 }
 
 fn player_look(
-    player: Query<(&Children, &ActionState<PlayerAction>), With<Player>>,
-    mut camera: Query<&mut Transform, With<PlayerCam>>,
+    window: Query<&Window, With<PrimaryWindow>>,
+    mut player: Query<(&mut Transform, &Children, &ActionState<PlayerAction>), With<Player>>,
+    mut camera: Query<&mut Transform, (With<PlayerCam>, Without<Player>)>,
 ) {
-    for (children, actions) in &player {
+    let window = window.single();
+    if !window.focused {
+        return;
+    }
+    let scale = window.width().min(window.height()) / window.width();
+    for (mut body, children, actions) in &mut player {
         let Some(child) = children.first().cloned() else {
             error!("Player has not child entity");
             continue;
@@ -183,13 +193,14 @@ fn player_look(
 
         let look = actions.axis_pair(&PlayerAction::Look);
 
-        let (yaw, pitch, _) = camera.rotation.to_euler(EulerRot::YXZ);
-        camera.rotation = Quat::from_axis_angle(Vec3::Y, yaw - (look.x).to_radians())
-            * Quat::from_axis_angle(
-                Vec3::X,
-                (pitch - (look.y).to_radians())
-                    .clamp(-f32::consts::FRAC_PI_2, f32::consts::FRAC_PI_2),
-            );
+        let (_, pitch, _) = camera.rotation.to_euler(EulerRot::YXZ);
+        camera.rotation = Quat::from_axis_angle(
+            Vec3::X,
+            (pitch - (look.y * scale).to_radians())
+                .clamp(-f32::consts::FRAC_PI_2, f32::consts::FRAC_PI_2),
+        );
+        let (yaw, _, _) = body.rotation.to_euler(EulerRot::YXZ);
+        body.rotation = Quat::from_axis_angle(Vec3::Y, yaw - (look.x * scale).to_radians());
     }
 }
 

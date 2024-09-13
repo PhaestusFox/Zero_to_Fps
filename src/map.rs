@@ -18,7 +18,7 @@ pub fn plugin(app: &mut App) {
         .init_asset::<Cell>()
         .add_systems(Startup, spawn_test_asset)
         .add_systems(Update, (onchange_cell, onload_cell))
-        .add_systems(PostUpdate, update_scale)
+        .add_systems(PostUpdate, add_dynamic_components)
         .add_plugins(map_editor::plugin);
 }
 
@@ -32,6 +32,8 @@ pub struct Cell {
     scale: f32,
     #[reflect(ignore)]
     can_tile: TileDirection,
+    #[reflect(ignore)]
+    components: Vec<Box<dyn Reflect>>,
 }
 
 use bitflags::bitflags;
@@ -167,6 +169,9 @@ fn update_scale(mut commands: Commands, mut objects: Query<(Entity, &mut Transfo
     }
 }
 
+#[derive(Component)]
+struct AddDynamicComponents;
+
 fn update_cell(commands: &mut Commands, target: Entity, asset: &Cell) {
     let mut cell = commands.entity(target);
     cell.despawn_descendants();
@@ -185,4 +190,38 @@ fn update_cell(commands: &mut Commands, target: Entity, asset: &Cell) {
     } else {
         cell.insert(asset.collider.clone());
     }
+    if !asset.components.is_empty() {
+        cell.insert(AddDynamicComponents);
+    }
+}
+
+fn add_dynamic_components(world: &mut World) {
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = registry.read();
+    let query = QueryBuilder::<(Entity, &Handle<Cell>), With<AddDynamicComponents>>::new(world)
+        .build()
+        .iter(world)
+        .map(|f| (f.0, f.1.clone_weak()))
+        .collect::<Vec<_>>();
+    world.resource_scope(|world: &mut World, cell_assets: Mut<Assets<Cell>>| {
+        for (id, handel) in query {
+            let Some(asset) = cell_assets.get(handel.id()) else {
+                continue;
+            };
+            for component in asset.components.iter() {
+                let Some(component_data) =
+                    registry.get_type_data::<ReflectComponent>(component.type_id())
+                else {
+                    error!(
+                        "type({}) not in registry",
+                        std::any::type_name_of_val(component)
+                    );
+                    continue;
+                };
+                let mut entity = world.entity_mut(id);
+                component_data.apply_or_insert(&mut entity, component.as_reflect(), &registry);
+                entity.remove::<AddDynamicComponents>();
+            }
+        }
+    })
 }
