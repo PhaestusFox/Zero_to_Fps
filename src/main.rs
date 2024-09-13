@@ -18,10 +18,11 @@ fn main() {
     let mut app = App::new();
     app.add_plugins((DefaultPlugins, RapierPhysicsPlugin::<()>::default()))
         .add_systems(Startup, (spawn_world, test_spawn))
-        .add_plugins(player::plugin);
+        .add_plugins((player::plugin, map::plugin));
     #[cfg(debug_assertions)]
     app.add_plugins((EditorPlugin::new(), RapierDebugRenderPlugin::default()));
     app.run();
+
 }
 
 fn spawn_world(mut commands: Commands) {

@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = "0.14"
-bevy_rapier3d = "*"
+bevy = {version = "0.14", features = ["file_watcher"]}
+bevy_rapier3d = {version = "*", features = ["serde-serialize"]}
 bevy_editor_pls = "0.9"
 leafwing-input-manager = "0.15.0"
+serde = "*"
+ron = "*"
