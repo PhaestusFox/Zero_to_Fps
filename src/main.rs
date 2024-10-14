@@ -1,5 +1,6 @@
 use core::f32;
 
+use avian3d::prelude::*;
 use bevy::{
     asset::LoadedFolder,
     input::common_conditions::input_just_pressed,
@@ -7,20 +8,23 @@ use bevy::{
     window::{CursorGrabMode, PrimaryWindow},
 };
 use bevy_editor_pls::{egui::widgets, EditorPlugin};
-use bevy_rapier3d::prelude::*;
 use leafwing_input_manager::prelude::*;
 
 mod blaster;
+mod health;
 mod map;
 mod player;
 
 fn main() {
     let mut app = App::new();
-    app.add_plugins((DefaultPlugins, RapierPhysicsPlugin::<()>::default()))
+    app.add_plugins((DefaultPlugins, avian3d::PhysicsPlugins::default()))
         .add_systems(Startup, (spawn_world, test_spawn))
-        .add_plugins((player::plugin, map::plugin, blaster::plugin));
+        .add_plugins((player::plugin, map::plugin, blaster::plugin, health::plugin));
     #[cfg(debug_assertions)]
-    app.add_plugins((EditorPlugin::new(), RapierDebugRenderPlugin::default()));
+    app.add_plugins((
+        EditorPlugin::new(),
+        avian3d::debug_render::PhysicsDebugPlugin::default(),
+    ));
     app.run();
 }
 
@@ -31,7 +35,7 @@ fn spawn_world(mut commands: Commands) {
             ..Default::default()
         },
         Collider::cuboid(10., 0.5, 10.),
-        RigidBody::Fixed,
+        RigidBody::Static,
     ));
 }
 
@@ -71,4 +75,12 @@ fn test_spawn(mut commands: Commands, asset_server: Res<AssetServer>) {
             z += 2.;
         }
     }
+}
+
+use avian3d::prelude::PhysicsLayer;
+#[derive(PhysicsLayer)]
+enum Layers {
+    Player,
+    Ground,
+    Blasters,
 }

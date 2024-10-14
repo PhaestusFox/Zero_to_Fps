@@ -1,11 +1,11 @@
 use core::f32;
 
+use avian3d::prelude::*;
 use bevy::{
     asset::{AssetLoader, AsyncReadExt},
     prelude::*,
     render::render_asset::RenderAssetUsages,
 };
-use bevy_rapier3d::prelude::*;
 
 mod asset_loading;
 mod map_editor;
@@ -17,7 +17,7 @@ pub fn plugin(app: &mut App) {
     app.init_asset_loader::<asset_loading::CellAssetLoader>()
         .init_asset::<Cell>()
         .add_systems(Startup, spawn_test_asset)
-        .add_systems(Update, (onchange_cell, onload_cell))
+        .add_systems(Update, (onchange_cell, onload_cell, despawn_objects))
         .add_systems(PostUpdate, add_dynamic_components)
         .add_plugins(map_editor::plugin);
 }
@@ -30,10 +30,11 @@ pub struct Cell {
     collider_offset: Option<Vec3>,
     body: RigidBody,
     scale: f32,
-    #[reflect(ignore)]
-    can_tile: TileDirection,
+    // #[reflect(ignore)]
+    // can_tile: TileDirection,
     #[reflect(ignore)]
     components: Vec<Box<dyn Reflect>>,
+    layer: Option<(u32, u32)>,
 }
 
 use bitflags::bitflags;
@@ -53,7 +54,7 @@ bitflags! {
 }
 
 #[derive(Bundle, Default)]
-struct MapCellBundle {
+pub struct MapCellBundle {
     /// The visibility of the entity.
     pub visibility: Visibility,
     /// The inherited visibility of the entity.
@@ -176,19 +177,32 @@ fn update_cell(commands: &mut Commands, target: Entity, asset: &Cell) {
     let mut cell = commands.entity(target);
     cell.despawn_descendants();
     cell.remove::<Collider>();
-    cell.insert((asset.scene.clone(), asset.body, SetScale(asset.scale)));
+    cell.insert((asset.scene.clone(), asset.body, Mass(10.)));
     if let Some(offset) = asset.collider_offset {
         cell.with_children(|p| {
-            p.spawn((
+            let mut c = p.spawn((
                 SpatialBundle {
                     transform: Transform::from_translation(offset),
                     ..Default::default()
                 },
                 asset.collider.clone(),
+                Mass(10.),
             ));
+            // if let Some((memberships, filters)) = asset.layer {
+            //     c.insert(CollisionGroups::new(
+            //         Group::from_bits_retain(memberships),
+            //         Group::from_bits_retain(filters),
+            //     ));
+            // }
         });
     } else {
         cell.insert(asset.collider.clone());
+        if let Some((memberships, filters)) = asset.layer {
+            // cell.insert(CollisionGroups::new(
+            //     Group::from_bits_retain(memberships),
+            //     Group::from_bits_retain(filters),
+            // ));
+        }
     }
     if !asset.components.is_empty() {
         cell.insert(AddDynamicComponents);
@@ -224,4 +238,41 @@ fn add_dynamic_components(world: &mut World) {
             }
         }
     })
+}
+
+#[derive(Component)]
+pub struct Despawn {
+    start: f32,
+    current: f32,
+}
+
+impl Despawn {
+    pub fn new(length: f32) -> Despawn {
+        Despawn {
+            start: length,
+            current: 0.,
+        }
+    }
+
+    fn add(&mut self, delta: f32) {
+        self.current += delta;
+    }
+
+    fn progress(&mut self) -> f32 {
+        (self.start - self.current) / self.start
+    }
+}
+
+fn despawn_objects(
+    mut commands: Commands,
+    mut objects: Query<(Entity, &mut Transform, &mut Despawn)>,
+    time: Res<Time>,
+) {
+    for (entity, mut scale, mut timer) in &mut objects {
+        scale.scale = Vec3::splat(timer.progress());
+        timer.add(time.delta_seconds());
+        if timer.progress() < 0. {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
 }

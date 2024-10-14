@@ -1,13 +1,13 @@
 (
-    scene: "Blasters/blasterA.glb#Scene0",
+    scene: "Blasters/blasterB.glb#Scene0",
     layer: Some((6, 4294967295)),
-    collider: Cuboid((0.2,0.4,0.9)),
+    collider: Cuboid((0.2,0.3,0.4)),
     collider_offset: Some((0.,0.,0.)),
     body: Dynamic,
     can_tile: (bits:0),
     components: {
         "Blaster": "()",
         "Recoil": "(0.)",
-        "Ammo": "(3)",
+        "Ammo": "(0)",
     }
 )

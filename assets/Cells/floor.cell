@@ -1,5 +1,5 @@
 (
     scene: "Conveyor/floor.glb#Scene0",
-    collider: Cuboid((1.,0.0, 1.)),
+    collider: Cuboid((2.,0.0, 2.)),
     can_tile: (bits:5),
 )

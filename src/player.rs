@@ -1,20 +1,22 @@
 use core::f32;
 
+use avian3d::prelude::*;
 use bevy::{
     input::common_conditions::input_just_pressed,
     prelude::*,
     window::{CursorGrabMode, PrimaryWindow},
 };
 use bevy_editor_pls::{egui::widgets, EditorPlugin};
-use bevy_rapier3d::prelude::*;
 use leafwing_input_manager::prelude::*;
 
 pub fn plugin(app: &mut App) {
     app.add_plugins(InputManagerPlugin::<PlayerAction>::default())
         .add_systems(Startup, (spawn_player, lock_mouse))
+        .add_systems(PreUpdate, update_grounded)
         .add_systems(
             Update,
             (
+                apply_movement_damping,
                 player_move,
                 player_look,
                 toggle_mouse.run_if(input_just_pressed(KeyCode::Escape)),
@@ -46,7 +48,7 @@ fn toggle_mouse(mut window: Query<&mut Window, With<PrimaryWindow>>) {
 }
 
 #[derive(Component)]
-struct PlayerCam;
+pub struct PlayerCam;
 
 #[derive(Component)]
 pub struct Player;
@@ -61,6 +63,7 @@ pub enum PlayerAction {
     FlyUp,
     FlyDown,
     Shoot,
+    Jump,
 }
 
 impl Actionlike for PlayerAction {
@@ -78,6 +81,7 @@ fn player_bindings() -> InputMap<PlayerAction> {
         (PlayerAction::MoveDown, KeyCode::KeyS),
         (PlayerAction::MoveLeft, KeyCode::KeyA),
         (PlayerAction::MoveRight, KeyCode::KeyD),
+        (PlayerAction::Jump, KeyCode::Space),
     ])
     .with_dual_axis(PlayerAction::Look, MouseMove::default().sensitivity(0.1));
     map.insert(PlayerAction::FlyUp, KeyCode::Space)
@@ -91,46 +95,66 @@ fn spawn_player(
     mut mesh_assets: ResMut<Assets<Mesh>>,
     mut material_assets: ResMut<Assets<StandardMaterial>>,
 ) {
-    commands
+    let player = commands
         .spawn((
+            Name::new("Player"),
             Player,
             SpatialBundle::default(),
-            Collider::capsule(Vec3::Y * 0.5, Vec3::NEG_Y * 0.5, 0.5),
+            Collider::capsule(0.5, 1.),
             mesh_assets.add(Capsule3d::new(0.5, 1.)),
             material_assets.add(StandardMaterial::default()),
-            KinematicCharacterController::default(),
+            ShapeCaster::new(
+                Collider::capsule(0.5, 1.),
+                Vec3::ZERO,
+                Quat::IDENTITY,
+                Dir3::new_unchecked(Vec3::NEG_Y),
+            ),
             RigidBody::Dynamic,
             InputManagerBundle {
                 input_map: player_bindings(),
                 action_state: ActionState::default(),
             },
+            MovementDampingFactor(0.9),
             LockedAxes::ROTATION_LOCKED,
             CollidingEntities::default(),
-            ActiveEvents::all(),
+            CollisionLayers::new(
+                super::Layers::Player,
+                [super::Layers::Blasters, super::Layers::Ground],
+            ), // ActiveEvents::all(),
+               // CollisionGroups::new(Group::ALL, Group::ALL ^ Group::GROUP_2),
         ))
-        .with_children(|p| {
-            p.spawn((
-                Camera3dBundle {
-                    transform: Transform::from_translation(Vec3::Y * 0.5),
-                    ..Default::default()
-                },
-                PlayerCam,
-            ));
-        });
+        .id();
+
+    commands.entity(player).with_children(|p| {
+        p.spawn((
+            Camera3dBundle {
+                transform: Transform::from_translation(Vec3::Y * 0.5),
+                ..Default::default()
+            },
+            RayCaster::new(Vec3::ZERO, Dir3::new(Vec3::NEG_Z).unwrap())
+                .with_ignore_self(true)
+                .with_max_time_of_impact(10.)
+                .with_query_filter(SpatialQueryFilter::from_excluded_entities([player])),
+            RayHits::default(),
+            PlayerCam,
+        ));
+    });
 }
 
 fn player_move(
     mut player: Query<
         (
-            &mut KinematicCharacterController,
+            &mut LinearVelocity,
             &Children,
             &ActionState<PlayerAction>,
+            &RigidBody,
+            Option<&Grounded>,
         ),
         With<Player>,
     >,
     camera: Query<&GlobalTransform, With<PlayerCam>>,
 ) {
-    for (mut controller, children, actions) in &mut player {
+    for (mut player, children, actions, body, ground) in &mut player {
         let mut delta = Vec3::default();
         if actions.pressed(&PlayerAction::MoveUp) {
             delta.z += 1.;
@@ -157,17 +181,18 @@ fn player_move(
         delta = forward + left;
         delta.y = 0.;
         #[cfg(debug_assertions)]
-        if actions.pressed(&PlayerAction::FlyDown) {
-            delta.y -= 1.;
+        if body == &RigidBody::Kinematic {
+            if actions.pressed(&PlayerAction::FlyDown) {
+                delta.y -= 1.;
+            }
+            if actions.pressed(&PlayerAction::FlyUp) {
+                delta.y += 1.;
+            }
         }
-        if actions.pressed(&PlayerAction::FlyUp) {
-            delta.y += 1.;
+        if ground.is_some() && actions.just_pressed(&PlayerAction::Jump) {
+            delta.y += 10.;
         }
-        if let Some(current) = &mut controller.translation {
-            *current += delta.normalize();
-        } else {
-            controller.translation = Some(delta.normalize());
-        }
+        player.0 += delta;
     }
 }
 
@@ -207,9 +232,38 @@ fn player_look(
 fn noclip(mut player: Query<&mut RigidBody, With<Player>>) {
     for mut player in &mut player {
         match *player {
-            RigidBody::Dynamic => *player = RigidBody::Fixed,
-            RigidBody::Fixed => *player = RigidBody::Dynamic,
+            RigidBody::Dynamic => *player = RigidBody::Kinematic,
+            RigidBody::Kinematic => *player = RigidBody::Dynamic,
             _ => {}
+        }
+    }
+}
+
+#[derive(Component)]
+struct MovementDampingFactor(f32);
+
+fn apply_movement_damping(mut query: Query<(&MovementDampingFactor, &mut LinearVelocity)>) {
+    for (damping_factor, mut linear_velocity) in &mut query {
+        // We could use `LinearDamping`, but we don't want to dampen movement along the Y axis
+        linear_velocity.x *= damping_factor.0;
+        linear_velocity.z *= damping_factor.0;
+    }
+}
+
+#[derive(Component)]
+struct Grounded;
+
+/// Updates the [`Grounded`] status for character controllers.
+fn update_grounded(mut commands: Commands, mut query: Query<(Entity, &ShapeHits), With<Player>>) {
+    for (entity, hits) in &mut query {
+        // The character is grounded if the shape caster has a hit with a normal
+        // that isn't too steep.
+        let is_grounded = hits.iter().any(|_| true);
+
+        if is_grounded {
+            commands.entity(entity).insert(Grounded);
+        } else {
+            commands.entity(entity).remove::<Grounded>();
         }
     }
 }

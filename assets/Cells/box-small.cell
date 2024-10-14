@@ -1,7 +1,33 @@
 (
     scene: "Conveyor/box-small.glb#Scene0",
-    collider: Cuboid((0.5,0.5,0.5)),
+    collider: Cuboid((1.,1.,1.)),
     collider_offset: Some((0.,0.25,0.)),
     body: Dynamic,
     can_tile: (bits:0),
+    components: {
+        "Health": "(1)",
+        "DropTable": "([
+            (
+                cell: \"Cells/blaster-a.cell\",
+                chance: 1.0,
+                min_amount: 1,
+                max_amount: 2,
+                offset: (0.,0.5,0.),
+            ),
+            (
+                cell: \"Cells/blaster-a.cell\",
+                chance: 0.75,
+                min_amount: 1,
+                max_amount: 3,
+                offset: (0.,0.5,0.),
+            ),
+            (
+                cell: \"Cells/blaster-b.cell\",
+                chance: 0.25,
+                min_amount: 1,
+                max_amount: 2,
+                offset: (0.,0.5,0.),
+            ),
+        ])",    
+    }
 )

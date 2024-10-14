@@ -1,45 +1,73 @@
 use core::f32;
 
+use avian3d::prelude::*;
 use bevy::prelude::*;
-use bevy_rapier3d::prelude::*;
 use leafwing_input_manager::prelude::ActionState;
 
-use crate::player::{Player, PlayerAction};
+use crate::{
+    health::Health,
+    map::Despawn,
+    player::{Player, PlayerAction, PlayerCam},
+    Layers,
+};
 
 pub fn plugin(app: &mut App) {
-    app.register_type::<Blaster>()
+    app.add_event::<BlasterEvent>()
+        .register_type::<Ammo>()
+        .register_type::<Blaster>()
         .register_type::<Recoil>()
         .init_resource::<ShootSound>()
-        .add_systems(Update, (pickup_gun_empty, equip_gun, fire, recoil));
+        .add_systems(Update, (equip_gun, fire, recoil, hit_scan))
+        .add_systems(PostUpdate, pickup_gun_empty);
 }
 
 #[derive(Component, Reflect, serde::Deserialize)]
 #[reflect(Deserialize, Component)]
 pub struct Blaster;
 
+#[derive(Component, Reflect, serde::Deserialize)]
+#[reflect(Deserialize, Component)]
+pub struct Ammo(u8);
+
 #[derive(Component)]
 pub struct CurrentBlaster(Entity);
 
 fn pickup_gun_empty(
+    mut context: EventReader<CollisionStarted>,
     mut commands: Commands,
     blasters: Query<Entity, With<Blaster>>,
     childern: Query<&Parent>,
-    player: Query<(Entity, &CollidingEntities), (With<Player>, Without<CurrentBlaster>)>,
+    player: Query<Entity, (With<Player>, Without<CurrentBlaster>)>,
 ) {
-    let Ok((entity, colliding)) = player.get_single() else {
+    let Ok(player) = player.get_single() else {
         return;
     };
-    for colliding in colliding.iter() {
+    for colliding in context.read() {
+        let colliding = if colliding.0 == player {
+            colliding.1
+        } else if colliding.1 == player {
+            colliding.0
+        } else {
+            continue;
+        };
         if blasters.get(colliding).is_ok() {
+            commands.entity(colliding).remove::<RigidBody>();
             commands.entity(colliding).remove::<Collider>();
-            commands.entity(entity).insert(CurrentBlaster(colliding));
+            commands.entity(colliding).insert((
+                CollisionLayers::new(Layers::Blasters, Layers::all_bits()),
+                RigidBody::Static,
+            ));
+            commands.entity(player).insert(CurrentBlaster(colliding));
             return;
         }
         if let Ok(parent) = childern.get(colliding) {
             if blasters.get(parent.get()).is_ok() {
-                commands.entity(colliding).remove::<Collider>();
                 commands.entity(parent.get()).remove::<RigidBody>();
-                commands.entity(entity).insert(CurrentBlaster(parent.get()));
+                commands.entity(colliding).remove::<Collider>();
+                commands
+                    .entity(colliding)
+                    .insert((CollisionLayers::new(Layers::Blasters, Layers::all_bits()),));
+                commands.entity(player).insert(CurrentBlaster(parent.get()));
                 return;
             }
         }
@@ -90,24 +118,31 @@ impl FromWorld for ShootSound {
     }
 }
 
+#[derive(Event)]
+enum BlasterEvent {
+    Fire,
+}
+
 fn fire(
     mut commands: Commands,
-    mut blasters: Query<(Entity, &mut Recoil), With<Blaster>>,
-    player: Query<(&ActionState<PlayerAction>, &CurrentBlaster)>,
+    mut blasters: Query<(Entity, &mut Recoil, &mut Ammo), With<Blaster>>,
+    player: Query<(Entity, &ActionState<PlayerAction>, &CurrentBlaster)>,
     sound: Res<ShootSound>,
+    mut blaster_event: EventWriter<BlasterEvent>,
 ) {
-    let Ok((player, gun)) = player.get_single() else {
+    let Ok((player_entity, player, gun)) = player.get_single() else {
         return;
     };
     if !player.just_pressed(&PlayerAction::Shoot) {
         return;
     }
-    let Ok((blaster, mut recoil)) = blasters.get_mut(gun.0) else {
+    let Ok((blaster, mut recoil, mut ammo)) = blasters.get_mut(gun.0) else {
         return;
     };
     if recoil.0 > 0. {
         return;
     }
+    blaster_event.send(BlasterEvent::Fire);
     recoil.0 += 1.;
     commands.entity(blaster).insert(AudioSourceBundle {
         source: sound.get(),
@@ -116,6 +151,21 @@ fn fire(
             ..Default::default()
         },
     });
+    if ammo.0 == 0 {
+        commands
+            .entity(blaster)
+            .remove::<Blaster>()
+            .remove_parent_in_place()
+            .insert((
+                RigidBody::Dynamic,
+                LinearVelocity(Vec3::new(0., 5., -1.5)),
+                AngularVelocity(Vec3::Y),
+                Despawn::new(5.),
+            ));
+        commands.entity(player_entity).remove::<CurrentBlaster>();
+    } else {
+        ammo.0 -= 1;
+    }
 }
 
 fn recoil(mut blasters: Query<(&mut Transform, &mut Recoil)>, time: Res<Time>) {
@@ -126,5 +176,48 @@ fn recoil(mut blasters: Query<(&mut Transform, &mut Recoil)>, time: Res<Time>) {
         let (_, yaw, roll) = pos.rotation.to_euler(EulerRot::XYZ);
         recoil.0 -= time.delta_seconds() * 3.;
         pos.rotation = Quat::from_euler(EulerRot::XYZ, recoil.0 + f32::consts::PI, yaw, roll);
+    }
+}
+
+fn hit_scan(
+    mut commands: Commands,
+    mut gizmos: Gizmos,
+    mut objects: Query<(Entity, &mut Health)>,
+    parents: Query<&Parent>,
+    mut blaster_event: EventReader<BlasterEvent>,
+    player: Query<(&Parent, &GlobalTransform, &RayHits), With<PlayerCam>>,
+) {
+    let (entity, player, rays) = player.single();
+    for event in blaster_event.read() {
+        match event {
+            BlasterEvent::Fire => {
+                gizmos.line(
+                    player.translation(),
+                    player.translation() + player.forward().as_vec3() * 10.,
+                    bevy::color::palettes::basic::RED,
+                );
+                for hit in rays.iter() {
+                    if let Ok((object, mut health)) = objects.get_mut(hit.entity) {
+                        if health.0 > 1 {
+                            health.0 -= 1;
+                        } else {
+                            commands.entity(object).remove::<Health>();
+                        }
+                        continue;
+                    }
+                    let Ok(parent) = parents.get(hit.entity) else {
+                        continue;
+                    };
+                    if let Ok((object, mut health)) = objects.get_mut(parent.get()) {
+                        if health.0 > 1 {
+                            health.0 -= 1;
+                        } else {
+                            commands.entity(object).remove::<Health>();
+                        }
+                        continue;
+                    }
+                }
+            }
+        }
     }
 }

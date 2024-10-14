@@ -1,6 +1,6 @@
 (
     scene: "Conveyor/box-wide.glb#Scene0",
-    collider: Cuboid((0.5,0.5,1.)),
+    collider: Cuboid((1.,1.,2.)),
     collider_offset: Some((0.,0.25,0.)),
     body: Dynamic,
     can_tile: (bits:0),

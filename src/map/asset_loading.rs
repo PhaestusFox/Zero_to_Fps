@@ -1,12 +1,12 @@
 use core::f32;
 
+use avian3d::prelude::*;
 use bevy::{
     asset::{AssetLoader, AsyncReadExt},
     prelude::*,
     render::render_asset::RenderAssetUsages,
     utils::HashMap,
 };
-use bevy_rapier3d::prelude::*;
 
 use super::{Cell, TileDirection};
 
@@ -31,7 +31,7 @@ impl From<ColliderAsset> for Collider {
 
                 mesh.insert_indices(bevy::render::mesh::Indices::U16(indices));
                 mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertexs);
-                Collider::from_bevy_mesh(&mesh, &ComputedColliderShape::TriMesh).unwrap()
+                Collider::trimesh_from_mesh(&mesh).unwrap()
             }
         }
     }
@@ -66,8 +66,9 @@ fn print_cell() {
             body: RigidBody::Dynamic,
             scale: 1.,
             collider_offset: None,
-            can_tile: TileDirection::X | TileDirection::Z,
+            // can_tile: TileDirection::X | TileDirection::Z,
             components: HashMap::default(),
+            layer: None,
         })
     );
 }
@@ -82,9 +83,11 @@ struct CellAsset {
     body: RigidBody,
     #[serde(default = "one")]
     scale: f32,
-    can_tile: TileDirection,
+    // can_tile: TileDirection,
     #[serde(default)]
     components: HashMap<String, String>,
+    #[serde(default)]
+    layer: Option<(u32, u32)>,
 }
 
 fn one() -> f32 {
@@ -92,7 +95,7 @@ fn one() -> f32 {
 }
 
 fn fixed() -> RigidBody {
-    RigidBody::Fixed
+    RigidBody::Static
 }
 
 pub(super) struct CellAssetLoader(AppTypeRegistry);
@@ -176,8 +179,9 @@ async fn load_cell_asset<'a>(
         collider_offset: cell.collider_offset,
         body: cell.body,
         scale: cell.scale,
-        can_tile: cell.can_tile,
+        // can_tile: cell.can_tile,
         components,
+        layer: cell.layer,
     };
     Ok(cell)
 }

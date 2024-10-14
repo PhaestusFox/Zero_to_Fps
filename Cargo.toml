@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 bevy = {version = "0.14", features = ["file_watcher"]}
-bevy_rapier3d = {version = "*", features = ["serde-serialize"]}
+avian3d = {version = "0.1", features = ["serialize"]}
 bevy_editor_pls = "0.9"
-leafwing-input-manager = "0.15.0"
+leafwing-input-manager = "0.15.1"
 serde = "*"
 ron = "*"
 bitflags = "*"
